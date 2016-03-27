@@ -60,11 +60,11 @@ namespace MassTransit
                 responseTask = x.Handle<TResponse>();
             });
 
-            ISendEndpoint endpoint = await _requestEndpoint.Value;
+            ISendEndpoint endpoint = await _requestEndpoint.Value.ConfigureAwait(false);
 
-            await endpoint.Send(request, pipe, cancellationToken);
+            await endpoint.Send(request, pipe, cancellationToken).ConfigureAwait(false);
 
-            return await responseTask;
+            return await responseTask.ConfigureAwait(false);
         }
     }
 }

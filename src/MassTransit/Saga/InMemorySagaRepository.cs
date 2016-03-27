@@ -48,7 +48,7 @@ namespace MassTransit.Saga
             scope.Set(new
             {
                 _sagas.Count,
-                Persistence = "memory",
+                Persistence = "memory"
             });
         }
 
@@ -66,12 +66,12 @@ namespace MassTransit.Saga
                 SagaInstance<TSaga> saga = _sagas[sagaId];
                 if (saga == null)
                 {
-                    _sagas.Release();
-                    needToLeaveSagas = false;
-
-                    var missingSagaPipe = new MissingPipe<T>(this, next);
+                    var missingSagaPipe = new MissingPipe<T>(this, next, true);
 
                     await policy.Missing(context, missingSagaPipe);
+
+                    _sagas.Release();
+                    needToLeaveSagas = false;
                 }
                 else
                 {
@@ -84,7 +84,7 @@ namespace MassTransit.Saga
                         if (_log.IsDebugEnabled)
                             _log.DebugFormat("SAGA:{0}:{1} Used {2}", TypeMetadataCache<TSaga>.ShortName, sagaId, TypeMetadataCache<T>.ShortName);
 
-                        SagaConsumeContext<TSaga, T> sagaConsumeContext = new InMemorySagaConsumeContext<TSaga, T>(this, context, saga.Instance);
+                        SagaConsumeContext<TSaga, T> sagaConsumeContext = new InMemorySagaConsumeContext<TSaga, T>(this, context, saga.Instance, () => Remove(saga, context.CancellationToken));
 
                         await policy.Existing(sagaConsumeContext, next);
                     }
@@ -124,7 +124,8 @@ namespace MassTransit.Saga
                 if (_log.IsDebugEnabled)
                     _log.DebugFormat("SAGA:{0}:{1} Used {2}", TypeMetadataCache<TSaga>.ShortName, saga.Instance.CorrelationId, TypeMetadataCache<T>.ShortName);
 
-                SagaConsumeContext<TSaga, T> sagaConsumeContext = new InMemorySagaConsumeContext<TSaga, T>(this, context, saga.Instance);
+                SagaConsumeContext<TSaga, T> sagaConsumeContext = new InMemorySagaConsumeContext<TSaga, T>(this, context, saga.Instance,
+                    () => Remove(saga, context.CancellationToken));
 
                 await policy.Existing(sagaConsumeContext, next);
             }
@@ -134,6 +135,12 @@ namespace MassTransit.Saga
             }
         }
 
+        /// <summary>
+        /// Add an instance to the saga repository
+        /// </summary>
+        /// <param name="newSaga"></param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
         public async Task Add(TSaga newSaga, CancellationToken cancellationToken)
         {
             await _sagas.MarkInUse(cancellationToken);
@@ -147,6 +154,12 @@ namespace MassTransit.Saga
             }
         }
 
+        /// <summary>
+        /// Remove an instance from the saga repository
+        /// </summary>
+        /// <param name="saga"></param>
+        /// <param name="cancellationToken"></param>
+        /// <returns></returns>
         public async Task Remove(TSaga saga, CancellationToken cancellationToken)
         {
             await _sagas.MarkInUse(cancellationToken);
@@ -160,6 +173,33 @@ namespace MassTransit.Saga
             }
         }
 
+        async Task Remove(SagaInstance<TSaga> saga, CancellationToken cancellationToken)
+        {
+            await _sagas.MarkInUse(cancellationToken);
+            try
+            {
+                _sagas.Remove(saga);
+            }
+            finally
+            {
+                _sagas.Release();
+            }
+        }
+
+        /// <summary>
+        /// Adds the saga within an existing lock
+        /// </summary>
+        /// <param name="newSaga"></param>
+        void AddWithinLock(TSaga newSaga)
+        {
+            _sagas.Add(newSaga);
+        }
+
+        void RemoveWithinLock(TSaga saga)
+        {
+            _sagas.Remove(new SagaInstance<TSaga>(saga));
+        }
+
 
         /// <summary>
         /// Once the message pipe has processed the saga instance, add it to the saga repository
@@ -171,34 +211,65 @@ namespace MassTransit.Saga
         {
             readonly IPipe<SagaConsumeContext<TSaga, TMessage>> _next;
             readonly InMemorySagaRepository<TSaga> _repository;
+            readonly bool _withinLock;
 
-            public MissingPipe(InMemorySagaRepository<TSaga> repository, IPipe<SagaConsumeContext<TSaga, TMessage>> next)
+            public MissingPipe(InMemorySagaRepository<TSaga> repository, IPipe<SagaConsumeContext<TSaga, TMessage>> next, bool withinLock = false)
             {
                 _repository = repository;
                 _next = next;
+                _withinLock = withinLock;
             }
 
             void IProbeSite.Probe(ProbeContext context)
             {
-                 _next.Probe(context);
+                _next.Probe(context);
             }
 
             public async Task Send(SagaConsumeContext<TSaga, TMessage> context)
             {
+                var proxy = new InMemorySagaConsumeContext<TSaga, TMessage>(_repository, context, context.Saga,
+                    () => RemoveNewSaga(context.Saga, context.CancellationToken));
+
+                if (_withinLock)
+                    _repository.AddWithinLock(context.Saga);
+                else
+                    await _repository.Add(context.Saga, context.CancellationToken);
+
                 if (_log.IsDebugEnabled)
                 {
                     _log.DebugFormat("SAGA:{0}:{1} Added {2}", TypeMetadataCache<TSaga>.ShortName, context.Saga.CorrelationId,
                         TypeMetadataCache<TMessage>.ShortName);
                 }
 
-                var proxy = new InMemorySagaConsumeContext<TSaga, TMessage>(_repository, context, context.Saga);
+                try
+                {
+                    await _next.Send(proxy);
 
-                await _repository.Add(context.Saga, context.CancellationToken);
+                    if (proxy.IsCompleted)
+                    {
+                        await RemoveNewSaga(proxy.Saga, context.CancellationToken);
+                    }
+                }
+                catch (Exception)
+                {
+                    if (_log.IsDebugEnabled)
+                    {
+                        _log.DebugFormat("SAGA:{0}:{1} Removed(Fault) {2}", TypeMetadataCache<TSaga>.ShortName, context.Saga.CorrelationId,
+                            TypeMetadataCache<TMessage>.ShortName);
+                    }
 
-                await _next.Send(proxy);
+                    await RemoveNewSaga(proxy.Saga, context.CancellationToken);
 
-                if (proxy.IsCompleted)
-                    await _repository.Remove(proxy.Saga, context.CancellationToken);
+                    throw;
+                }
+            }
+
+            async Task RemoveNewSaga(TSaga saga, CancellationToken cancellationToken)
+            {
+                if (_withinLock)
+                    _repository.RemoveWithinLock(saga);
+                else
+                    await _repository.Remove(saga, cancellationToken);
             }
         }
     }

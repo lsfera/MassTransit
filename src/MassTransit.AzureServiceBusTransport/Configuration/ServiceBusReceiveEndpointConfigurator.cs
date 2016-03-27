@@ -59,7 +59,7 @@ namespace MassTransit.AzureServiceBusTransport.Configuration
         public void Apply(IBusBuilder builder)
         {
             ServiceBusReceiveEndpointBuilder endpointBuilder = null;
-            IPipe<ReceiveContext> receivePipe = CreateReceivePipe(builder, consumePipe =>
+            var receivePipe = CreateReceivePipe(builder, consumePipe =>
             {
                 endpointBuilder = new ServiceBusReceiveEndpointBuilder(consumePipe, _host.MessageNameFormatter);
                 return endpointBuilder;
@@ -73,19 +73,9 @@ namespace MassTransit.AzureServiceBusTransport.Configuration
             builder.AddReceiveEndpoint(new ReceiveEndpoint(transport, receivePipe));
         }
 
-        public bool EnableExpress
+        public TimeSpan AutoDeleteOnIdle
         {
-            set { _settings.QueueDescription.EnableExpress = value; }
-        }
-
-        public TimeSpan LockDuration
-        {
-            set { _settings.QueueDescription.LockDuration = value; }
-        }
-
-        public bool EnableDeadLetteringOnMessageExpiration
-        {
-            set { _settings.QueueDescription.EnableDeadLetteringOnMessageExpiration = value; }
+            set { _settings.QueueDescription.AutoDeleteOnIdle = value; }
         }
 
         public TimeSpan DefaultMessageTimeToLive
@@ -93,10 +83,78 @@ namespace MassTransit.AzureServiceBusTransport.Configuration
             set { _settings.QueueDescription.DefaultMessageTimeToLive = value; }
         }
 
-        public int PrefetchCount
+        public TimeSpan DuplicateDetectionHistoryTimeWindow
         {
-            set { _settings.PrefetchCount = value; }
+            set { _settings.QueueDescription.DuplicateDetectionHistoryTimeWindow = value; }
         }
+
+        public bool EnableBatchedOperations
+        {
+            set { _settings.QueueDescription.EnableBatchedOperations = value; }
+        }
+
+        public bool EnableDeadLetteringOnMessageExpiration
+        {
+            set { _settings.QueueDescription.EnableDeadLetteringOnMessageExpiration = value; }
+        }
+
+        public void EnableDuplicateDetection(TimeSpan historyTimeWindow)
+        {
+            _settings.QueueDescription.RequiresDuplicateDetection = true;
+            _settings.QueueDescription.DuplicateDetectionHistoryTimeWindow = historyTimeWindow;
+        }
+
+        public bool EnableExpress
+        {
+            set { _settings.QueueDescription.EnableExpress = value; }
+        }
+
+        public bool EnablePartitioning
+        {
+            set { _settings.QueueDescription.EnablePartitioning = value; }
+        }
+
+        public string ForwardDeadLetteredMessagesTo
+        {
+            set { _settings.QueueDescription.ForwardDeadLetteredMessagesTo = value; }
+        }
+
+        public bool IsAnonymousAccessible
+        {
+            set { _settings.QueueDescription.IsAnonymousAccessible = value; }
+        }
+
+        public TimeSpan LockDuration
+        {
+            set { _settings.QueueDescription.LockDuration = value; }
+        }
+
+        public int MaxDeliveryCount
+        {
+            set { _settings.QueueDescription.MaxDeliveryCount = value; }
+        }
+
+        public int MaxSizeInMegabytes
+        {
+            set { _settings.QueueDescription.MaxSizeInMegabytes = value; }
+        }
+
+        public bool RequiresDuplicateDetection
+        {
+            set { _settings.QueueDescription.RequiresDuplicateDetection = value; }
+        }
+
+        public bool SupportOrdering
+        {
+            set { _settings.QueueDescription.SupportOrdering = value; }
+        }
+
+        public string UserMetadata
+        {
+            set { _settings.QueueDescription.UserMetadata = value; }
+        }
+
+        public Uri InputAddress => _host.Settings.GetInputAddress(_settings.QueueDescription);
 
         public int MaxConcurrentCalls
         {
@@ -108,31 +166,35 @@ namespace MassTransit.AzureServiceBusTransport.Configuration
             }
         }
 
-        public Uri InputAddress => _host.Settings.GetInputAddress(_settings.QueueDescription);
-
-        public void EnableDuplicateDetection(TimeSpan historyTimeWindow)
+        public int PrefetchCount
         {
-            _settings.QueueDescription.RequiresDuplicateDetection = true;
-            _settings.QueueDescription.DuplicateDetectionHistoryTimeWindow = historyTimeWindow;
-        }
-
-        public TimeSpan AutoDeleteOnIdle
-        {
-            set { _settings.QueueDescription.AutoDeleteOnIdle = value; }
+            set { _settings.PrefetchCount = value; }
         }
 
         protected override Uri GetErrorAddress()
         {
             string errorQueueName = _settings.QueueDescription.Path + "_error";
-            var errorQueueDescription = new QueueDescription(errorQueueName);
+
+            var errorQueueDescription = GetQueueDescription(errorQueueName);
 
             return _host.Settings.GetInputAddress(errorQueueDescription);
         }
 
+        QueueDescription GetQueueDescription(string errorQueueName)
+        {
+            return new QueueDescription(errorQueueName)
+            {
+                AutoDeleteOnIdle = _settings.QueueDescription.AutoDeleteOnIdle,
+                EnableExpress = _settings.QueueDescription.EnableExpress,
+                DefaultMessageTimeToLive = _settings.QueueDescription.DefaultMessageTimeToLive
+            };
+        }
+
         protected override Uri GetDeadLetterAddress()
         {
-            string errorQueueName = _settings.QueueDescription.Path + "_skipped";
-            var errorQueueDescription = new QueueDescription(errorQueueName);
+            string skippedQueueName = _settings.QueueDescription.Path + "_skipped";
+
+            var errorQueueDescription = GetQueueDescription(skippedQueueName);
 
             return _host.Settings.GetInputAddress(errorQueueDescription);
         }

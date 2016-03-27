@@ -29,5 +29,10 @@ namespace MassTransit.Pipeline
         {
             return ForEachAsync(x => x.Completed(completed));
         }
+
+        public Task Faulted(ReceiveEndpointFaulted faulted)
+        {
+            return ForEachAsync(x => x.Faulted(faulted));
+        }
     }
 }

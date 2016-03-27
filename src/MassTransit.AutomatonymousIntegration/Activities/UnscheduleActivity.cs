@@ -15,7 +15,6 @@ namespace Automatonymous.Activities
     using System;
     using System.Threading.Tasks;
     using MassTransit;
-    using MassTransit.Context;
 
 
     public class UnscheduleActivity<TInstance> :

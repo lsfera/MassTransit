@@ -19,13 +19,14 @@ namespace MassTransit.Events
     public class FaultEvent<T> :
         Fault<T>
     {
-        public FaultEvent(T message, HostInfo host, Exception exception)
+        public FaultEvent(T message, Guid? faultedMessageId, HostInfo host, Exception exception)
         {
             Timestamp = DateTime.UtcNow;
             FaultId = NewId.NextGuid();
 
             Message = message;
             Host = host;
+            FaultedMessageId = faultedMessageId;
 
             var aggregateException = exception as AggregateException;
             Exceptions = aggregateException?.InnerExceptions.Select(x => ((ExceptionInfo)new FaultExceptionInfo(x))).ToArray()
@@ -33,6 +34,7 @@ namespace MassTransit.Events
         }
 
         public Guid FaultId { get; }
+        public Guid? FaultedMessageId { get; }
         public DateTime Timestamp { get; }
         public ExceptionInfo[] Exceptions { get; }
         public HostInfo Host { get; }

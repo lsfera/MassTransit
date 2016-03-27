@@ -10,7 +10,7 @@
 // under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR 
 // CONDITIONS OF ANY KIND, either express or implied. See the License for the 
 // specific language governing permissions and limitations under the License.
-namespace MassTransit.Transports
+namespace MassTransit.Context
 {
     using System;
     using System.Collections.Generic;
@@ -19,8 +19,8 @@ namespace MassTransit.Transports
     using System.Net.Mime;
     using System.Threading;
     using System.Threading.Tasks;
-    using Context;
     using Serialization;
+    using Util;
 
 
     public abstract class BaseReceiveContext :
@@ -47,7 +47,7 @@ namespace MassTransit.Transports
 
             _cancellationTokenSource = new CancellationTokenSource();
 
-            _headers = new Lazy<Headers>(() => new JsonHeaders(HeaderProvider));
+            _headers = new Lazy<Headers>(() => new JsonHeaders(ObjectTypeDeserializer.Instance, HeaderProvider));
 
             _contentType = new Lazy<ContentType>(GetContentType);
 
@@ -97,6 +97,13 @@ namespace MassTransit.Transports
             IsFaulted = true;
 
             return _receiveObserver.ConsumeFault(context, duration, consumerType, exception);
+        }
+
+        public virtual Task NotifyFaulted(Exception exception)
+        {
+            IsFaulted = true;
+
+            return _receiveObserver.ReceiveFault(this, exception);
         }
 
         public virtual Stream GetBody()

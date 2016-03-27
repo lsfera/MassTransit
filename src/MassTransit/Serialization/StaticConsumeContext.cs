@@ -101,7 +101,7 @@ namespace MassTransit.Serialization
         public Uri DestinationAddress => _destinationAddress ?? (_destinationAddress = GetHeaderUri(BinaryMessageSerializer.DestinationAddressKey));
         public Uri ResponseAddress => _responseAddress ?? (_responseAddress = GetHeaderUri(BinaryMessageSerializer.ResponseAddressKey));
         public Uri FaultAddress => _faultAddress ?? (_faultAddress = GetHeaderUri(BinaryMessageSerializer.FaultAddressKey));
-        public Headers Headers => _headers ?? (_headers = new StaticHeaders(_deserializer, _binaryHeaders));
+        public Headers Headers => _headers ?? (_headers = new StaticHeaders(_binaryHeaders));
         public HostInfo Host => _host ?? (_host = GetHeaderObject<HostInfo>(BinaryMessageSerializer.HostInfoKey));
         public CancellationToken CancellationToken => _receiveContext.CancellationToken;
         public ReceiveContext ReceiveContext => _receiveContext;
@@ -278,7 +278,7 @@ namespace MassTransit.Serialization
         async Task GenerateFault<T>(T message, Exception exception)
             where T : class
         {
-            Fault<T> fault = new FaultEvent<T>(message, HostMetadataCache.Host, exception);
+            Fault<T> fault = new FaultEvent<T>(message, MessageId, HostMetadataCache.Host, exception);
 
             IPipe<SendContext<Fault<T>>> faultPipe = Pipe.New<SendContext<Fault<T>>>(x => x.UseExecute(v =>
             {

@@ -14,9 +14,7 @@ namespace Automatonymous.Activities
 {
     using System;
     using System.Threading.Tasks;
-    using Contexts;
     using MassTransit;
-    using MassTransit.Context;
     using MassTransit.Pipeline;
 
 
@@ -26,10 +24,10 @@ namespace Automatonymous.Activities
         where TData : class
         where TMessage : class
     {
-        readonly Func<ConsumeEventContext<TInstance, TData>, TMessage> _messageFactory;
+        readonly EventMessageFactory<TInstance, TData, TMessage> _messageFactory;
         readonly IPipe<SendContext<TMessage>> _responsePipe;
 
-        public RespondActivity(Func<ConsumeEventContext<TInstance, TData>, TMessage> messageFactory,
+        public RespondActivity(EventMessageFactory<TInstance, TData, TMessage> messageFactory,
             Action<SendContext<TMessage>> contextCallback)
         {
             _messageFactory = messageFactory;
@@ -37,7 +35,7 @@ namespace Automatonymous.Activities
             _responsePipe = Pipe.Execute(contextCallback);
         }
 
-        public RespondActivity(Func<ConsumeEventContext<TInstance, TData>, TMessage> messageFactory)
+        public RespondActivity(EventMessageFactory<TInstance, TData, TMessage> messageFactory)
         {
             _messageFactory = messageFactory;
 
@@ -51,13 +49,9 @@ namespace Automatonymous.Activities
 
         async Task Activity<TInstance, TData>.Execute(BehaviorContext<TInstance, TData> context, Behavior<TInstance, TData> next)
         {
-            ConsumeContext<TData> consumeContext;
-            if (!context.TryGetPayload(out consumeContext))
-                throw new ContextException("The consume context could not be retrieved.");
+            var consumeContext = context.CreateConsumeContext();
 
-            var consumeEventContext = new AutomatonymousConsumeEventContext<TInstance, TData>(context, consumeContext);
-
-            TMessage message = _messageFactory(consumeEventContext);
+            TMessage message = _messageFactory(consumeContext);
 
             await consumeContext.RespondAsync(message, _responsePipe);
 

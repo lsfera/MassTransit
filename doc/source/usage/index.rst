@@ -9,9 +9,12 @@ provided below.
     messages.rst
     consumer.rst
     locations.rst
+    containers/index.rst
     request_response.rst
     exceptions.rst
     observers.rst
     busevents.rst
+    saga.rst
     retry.rst
     transactions.rst
+    diagnostics.rst

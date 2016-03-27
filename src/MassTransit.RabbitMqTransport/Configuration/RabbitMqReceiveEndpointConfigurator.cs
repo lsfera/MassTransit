@@ -68,7 +68,7 @@ namespace MassTransit.RabbitMqTransport.Configuration
         public void Apply(IBusBuilder builder)
         {
             RabbitMqReceiveEndpointBuilder endpointBuilder = null;
-            IPipe<ReceiveContext> receivePipe = CreateReceivePipe(builder, consumePipe =>
+            var receivePipe = CreateReceivePipe(builder, consumePipe =>
             {
                 endpointBuilder = new RabbitMqReceiveEndpointBuilder(consumePipe, _host.MessageNameFormatter);
                 return endpointBuilder;
@@ -137,8 +137,8 @@ namespace MassTransit.RabbitMqTransport.Configuration
         protected override Uri GetErrorAddress()
         {
             string errorQueueName = _settings.QueueName + "_error";
-            var sendSettings = new RabbitMqSendSettings(errorQueueName, RabbitMQ.Client.ExchangeType.Fanout, true,
-                false);
+            var sendSettings = new RabbitMqSendSettings(errorQueueName, RabbitMQ.Client.ExchangeType.Fanout, _settings.Durable,
+                _settings.AutoDelete);
 
             sendSettings.BindToQueue(errorQueueName);
 
@@ -148,8 +148,8 @@ namespace MassTransit.RabbitMqTransport.Configuration
         protected override Uri GetDeadLetterAddress()
         {
             string errorQueueName = _settings.QueueName + "_skipped";
-            var sendSettings = new RabbitMqSendSettings(errorQueueName, RabbitMQ.Client.ExchangeType.Fanout, true,
-                false);
+            var sendSettings = new RabbitMqSendSettings(errorQueueName, RabbitMQ.Client.ExchangeType.Fanout, _settings.Durable,
+                _settings.AutoDelete);
 
             sendSettings.BindToQueue(errorQueueName);
 
